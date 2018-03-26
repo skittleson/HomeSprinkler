@@ -4,6 +4,7 @@
  Author:	Spencer
 */
 
+//https://github.com/tzapu/WiFiManager/blob/master/examples/AutoConnectWithFSParameters/AutoConnectWithFSParameters.ino
 #include <ESP8266WiFi.h>          //ESP8266 Core WiFi Library (you most likely already have this in your sketch)
 
 #include <DNSServer.h>            //Local DNS Server used for redirecting all requests to the configuration portal
@@ -12,14 +13,13 @@
 
 #include <PubSubClient.h>         //https://github.com/knolleary/pubsubclient/blob/master/examples/mqtt_esp8266/mqtt_esp8266.ino
 
-const char* mqtt_server = "192.168.0.109";
-
 WiFiClient espClient;
 PubSubClient client(espClient);
 
+char mqtt_server[40];
 int relayPin = 2;
-char* sprinklerTopic = "home/sprinker";
-char* sprinklerTopicEvent = "home/sprinker/event";
+char* sprinklerTopic = "home/sprinkler";
+char* sprinklerTopicEvent = "home/sprinkler/event";
 
 /*handle subscribed topics*/
 void callback(char* topic, byte* payload, unsigned int length) {
@@ -29,12 +29,15 @@ void callback(char* topic, byte* payload, unsigned int length) {
 
 	String payloadValue = "";
 	char* pv = "";
+	strcpy(pv, (char*)payload);//rather use this over string object
 	for (int i = 0; i < length; i++) {
 		char receivedChar = (char)payload[i];
 		payloadValue = payloadValue + receivedChar;
 	}
 
 	Serial.println(payloadValue);
+	//TODO use json responses.
+	//TODO static if thens
 
 	if (strcmp(topic, sprinklerTopic) == 0) {
 		if (payloadValue == "STATUS") {
@@ -88,12 +91,16 @@ void setup() {
 	delay(2000);
 
 	WiFiManager wifiManager;
+	WiFiManagerParameter custom_mqtt_server("server", "mqtt server", mqtt_server, 40);
+	wifiManager.addParameter(&custom_mqtt_server);
 	wifiManager.autoConnect("SprinklerAp");
+
+	//Get the mqtt from the user input
+	strcpy(mqtt_server, custom_mqtt_server.getValue());
 
 	client.setServer(mqtt_server, 1883);
 	client.setCallback(callback);
-
-
+	
 	Serial.println("Connected");
 }
 
