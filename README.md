@@ -1,5 +1,5 @@
 # HomeSprinkler
-HomeSprinkler is a simple IoT software to trigger a single relay based on using MQTT.  
+HomeSprinkler tries to be a lean code to manage & trigger water sprinker based operations using a message queue design ([mqtt](https://mqtt.org/)). This is not a replacement for water sprinkler scheduling.
 
 ## Usage
 
