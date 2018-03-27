@@ -13,6 +13,8 @@
 
 #include <PubSubClient.h>         //https://github.com/knolleary/pubsubclient/blob/master/examples/mqtt_esp8266/mqtt_esp8266.ino
 
+#include <ArduinoJson.h>
+
 WiFiClient espClient;
 PubSubClient client(espClient);
 
@@ -23,44 +25,41 @@ char* sprinklerTopicEvent = "home/sprinkler/event";
 
 /*handle subscribed topics*/
 void callback(char* topic, byte* payload, unsigned int length) {
-	Serial.print("Message arrived [");
-	Serial.print(topic);
-	Serial.print("] ");
 
 	String payloadValue = "";
-	char* pv = "";
-	strcpy(pv, (char*)payload);//rather use this over string object
 	for (int i = 0; i < length; i++) {
 		char receivedChar = (char)payload[i];
 		payloadValue = payloadValue + receivedChar;
 	}
 
 	Serial.println(payloadValue);
-	//TODO use json responses.
-	//TODO static if thens
 
-	if (strcmp(topic, sprinklerTopic) == 0) {
-		if (payloadValue == "STATUS") {
-			int resultInt = digitalRead(relayPin);
-			delay(500);
-			char* relayEvent = "RELAY:";
-			relayEvent = relayEvent + resultInt;
-			client.publish(sprinklerTopicEvent, relayEvent);
-			Serial.println("Sent topic out");
-		}
-		else if (payloadValue == "ON") {
-			digitalWrite(relayPin, 1);
-			delay(500);
-			client.publish(sprinklerTopicEvent, "ON");
-			Serial.println("Turning on relay");
-		}
-		else if (payloadValue == "OFF") {
-			digitalWrite(relayPin, 0);
-			delay(500);
-			client.publish(sprinklerTopicEvent, "OFF");
-			Serial.println("Turning off relay");
-		}
+	if (strcmp(topic, sprinklerTopic) != 0) { return; }
+
+	DynamicJsonBuffer jsonBuffer;
+	JsonObject& root = jsonBuffer.createObject();
+	root["event"] = "relay";
+	root["topic"] = topic;
+
+	if (payloadValue == "STATUS") {
+		int resultInt = digitalRead(relayPin);
+		root["event"] = "relay-status";
+		root["value"] = resultInt;
 	}
+	else if (payloadValue == "ON") {
+		digitalWrite(relayPin, 1);
+		root["value"] = "ON";
+	}
+	else if (payloadValue == "OFF") {
+		digitalWrite(relayPin, 0);
+		root["value"] = "OFF";
+	}
+
+	String payloadJson;
+	root.printTo(payloadJson);
+
+	Serial.println(payloadJson);
+	client.publish(sprinklerTopicEvent, payloadJson.c_str());
 }
 
 void reconnect() {
@@ -100,7 +99,7 @@ void setup() {
 
 	client.setServer(mqtt_server, 1883);
 	client.setCallback(callback);
-	
+
 	Serial.println("Connected");
 }
 
