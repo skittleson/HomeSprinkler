@@ -3,6 +3,10 @@
  Created:	3/25/2018 7:56:44 PM
  Author:	Spencer Kittleson
 */
+//TODO multiple sprinkler values
+//TODO removed hard coded mqtt server
+//TODO ntp time server in messages
+//TODO failover if relay is on too long
 
 #include <ESP8266WiFi.h>          //ESP8266 Core WiFi Library (you most likely already have this in your sketch)
 
@@ -17,42 +21,56 @@
 WiFiClient espClient;
 PubSubClient client(espClient);
 
-//char mqtt_server[40];
-char* mqtt_server = "192.168.0.109";
-int relayPin = 2;
-char* sprinklerTopic = "home/sprinkler";
-char* sprinklerTopicEvent = "home/sprinkler/event";
+char* mqttServer = "192.168.0.109";
+const int mqttPort = 1883;
+const int relayPin = 2;
+const char* relayStatus = "status";
+const char* relayOn = "on";
+const char* relayOff = "off";
+const char* sprinklerTopic = "home/sprinkler";
+const char* sprinklerTopicEvent = "home/sprinkler/event";
 
 /**
-* Callback handler
+* Convert byte array into char array. 200 character limit.
+*/
+char* byteArrayIntoCharArray(byte* bytes, unsigned int length) {
+	char bytesValue[200];
+	for (int i = 0; i < length; i++) {
+		bytesValue[i] = (char)bytes[i];
+	}
+	bytesValue[length] = NULL;
+	return bytesValue;
+}
+
+/**
+* Callback handler for MQTT
 */
 void callback(char* topic, byte* payload, unsigned int length) {
-	//keep messages from topic
+	//Only topic defined should be processed
 	if (strcmp(topic, sprinklerTopic) != 0) { return; }
 
-	String payloadValue = "";
-	for (int i = 0; i < length; i++) {
-		char receivedChar = (char)payload[i];
-		payloadValue = payloadValue + receivedChar;
-	}
-	
+	char* payloadValue = byteArrayIntoCharArray(payload, length);
+
+	//Allocate for json response
 	DynamicJsonBuffer jsonBuffer;
 	JsonObject& root = jsonBuffer.createObject();
 	root["event"] = "relay";
 	root["topic"] = topic;
+	root["msg"] = "";
 
-	if (payloadValue == "STATUS") {
-		int resultInt = digitalRead(relayPin);
-		root["event"] = "relay-status";
-		root["value"] = (bool)resultInt;
+	if (strcmp(payloadValue, relayStatus) == 0) {
+		root[relayStatus] = (bool)digitalRead(relayPin);
 	}
-	else if (payloadValue == "ON") {
+	else if (strcmp(payloadValue, relayOn) == 0) {
 		digitalWrite(relayPin, 1);
-		root["value"] = true;
+		root[relayStatus] = true;
 	}
-	else if (payloadValue == "OFF") {
+	else if (strcmp(payloadValue, relayOff) == 0) {
 		digitalWrite(relayPin, 0);
-		root["value"] = false;
+		root[relayStatus] = false;
+	}
+	else {
+		root["msg"] = "unknown payload";
 	}
 
 	String payloadJson;
@@ -69,8 +87,8 @@ void reconnect() {
 		// Attempt to connect
 		if (client.connect("IoT Client")) {
 			Serial.println("connected");
-
-			client.subscribe(sprinklerTopic); //waiting for subscibed topic
+			//subscribe
+			client.subscribe(sprinklerTopic); 
 		}
 		else {
 			Serial.print("failed, rc=");
@@ -85,6 +103,7 @@ void reconnect() {
 void setup() {
 	Serial.begin(115200);
 
+	//Default the primary relay off
 	pinMode(relayPin, OUTPUT);
 	digitalWrite(relayPin, 0);
 	delay(500);
@@ -98,7 +117,7 @@ void setup() {
 	//Get the mqtt from the user input
 	//strcpy(mqtt_server, custom_mqtt_server.getValue());
 
-	client.setServer(mqtt_server, 1883);
+	client.setServer(mqttServer, mqttPort);
 	client.setCallback(callback);
 
 	Serial.println("Connected");
