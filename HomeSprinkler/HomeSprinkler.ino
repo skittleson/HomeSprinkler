@@ -3,10 +3,9 @@
  Created:	3/25/2018 7:56:44 PM
  Author:	Spencer Kittleson
 */
-//TODO multiple sprinkler values
-//TODO removed hard coded mqtt server
-//TODO ntp time server in messages
+//TODO removed hard coded mqtt server. use #include <EEPROM.h> if possible
 //TODO failover if relay is on too long
+//TODO multiple sprinkler values
 
 #include <ESP8266WiFi.h>          //ESP8266 Core WiFi Library (you most likely already have this in your sketch)
 
@@ -25,21 +24,19 @@ char* mqttServer = "192.168.0.109";
 const int mqttPort = 1883;
 const int relayPin = 2;
 const char* relayStatus = "status";
-const char* relayOn = "on";
-const char* relayOff = "off";
+const char* relayOn = "true";
+const char* relayOff = "false";
 const char* sprinklerTopic = "home/sprinkler";
 const char* sprinklerTopicEvent = "home/sprinkler/event";
 
 /**
-* Convert byte array into char array. 200 character limit.
+* Convert byte array into char array.
 */
 char* byteArrayIntoCharArray(byte* bytes, unsigned int length) {
-	char bytesValue[200];
-	for (int i = 0; i < length; i++) {
-		bytesValue[i] = (char)bytes[i];
-	}
-	bytesValue[length] = NULL;
-	return bytesValue;
+	char* data = (char*)bytes;
+	//end string at length. (it's kinda hacky and surprising this even works. array length is correct as well. :) )
+	data[length] = NULL;
+	return data;
 }
 
 /**
@@ -57,16 +54,17 @@ void callback(char* topic, byte* payload, unsigned int length) {
 	root["event"] = "relay";
 	root["topic"] = topic;
 	root["msg"] = "";
+	root["uptime"] = millis();
 
 	if (strcmp(payloadValue, relayStatus) == 0) {
-		root[relayStatus] = (bool)digitalRead(relayPin);
+		root[relayStatus] = !((bool)digitalRead(relayPin));
 	}
 	else if (strcmp(payloadValue, relayOn) == 0) {
-		digitalWrite(relayPin, 1);
+		digitalWrite(relayPin, 0);
 		root[relayStatus] = true;
 	}
 	else if (strcmp(payloadValue, relayOff) == 0) {
-		digitalWrite(relayPin, 0);
+		digitalWrite(relayPin, 1);
 		root[relayStatus] = false;
 	}
 	else {
@@ -88,7 +86,7 @@ void reconnect() {
 		if (client.connect("IoT Client")) {
 			Serial.println("connected");
 			//subscribe
-			client.subscribe(sprinklerTopic); 
+			client.subscribe(sprinklerTopic);
 		}
 		else {
 			Serial.print("failed, rc=");
@@ -105,7 +103,7 @@ void setup() {
 
 	//Default the primary relay off
 	pinMode(relayPin, OUTPUT);
-	digitalWrite(relayPin, 0);
+	digitalWrite(relayPin, 1);
 	delay(500);
 
 	WiFiManager wifiManager;
