@@ -3,10 +3,9 @@
  Created:	3/25/2018 7:56:44 PM
  Author:	Spencer Kittleson
 */
-//TODO removed hard coded mqtt server. use #include <EEPROM.h> if possible
 //TODO failover if relay is on too long
 //TODO multiple sprinkler values
-
+#include <FS.h>
 #include <ESP8266WiFi.h>          //ESP8266 Core WiFi Library (you most likely already have this in your sketch)
 
 #include <DNSServer.h>            //Local DNS Server used for redirecting all requests to the configuration portal
@@ -17,10 +16,12 @@
 
 #include <ArduinoJson.h>
 
+//https://github.com/esp8266/Arduino/blob/master/libraries/esp8266/examples/ConfigFile/ConfigFile.ino
+
 WiFiClient espClient;
 PubSubClient client(espClient);
 
-char* mqttServer = "192.168.0.109";
+char mqttServer[40];
 const int mqttPort = 1883;
 const int relayPin = 2;
 const char* relayStatus = "status";
@@ -28,6 +29,14 @@ const char* relayOn = "true";
 const char* relayOff = "false";
 const char* sprinklerTopic = "home/sprinkler";
 const char* sprinklerTopicEvent = "home/sprinkler/event";
+bool shouldSaveConfig = false;
+
+/**
+* callback notifying us of the need to save config
+*/
+void saveConfigCallback() {
+	shouldSaveConfig = true;
+}
 
 /**
 * Convert byte array into char array.
@@ -42,7 +51,7 @@ char* byteArrayIntoCharArray(byte* bytes, unsigned int length) {
 /**
 * Callback handler for MQTT
 */
-void callback(char* topic, byte* payload, unsigned int length) {
+void callbackMessage(char* topic, byte* payload, unsigned int length) {
 	//Only topic defined should be processed
 	if (strcmp(topic, sprinklerTopic) != 0) { return; }
 
@@ -78,21 +87,66 @@ void callback(char* topic, byte* payload, unsigned int length) {
 	client.publish(sprinklerTopicEvent, payloadJson.c_str());
 }
 
+/**
+* Save values that need to persist a reboot
+*/
+bool loadConfig() {
+	File configFile = SPIFFS.open("/config.json", "r");
+	if (!configFile) {
+		Serial.println("Failed to open config file");
+		return false;
+	}
+	size_t size = configFile.size();
+	if (size > 1024) {
+		Serial.println("Config file size is too large");
+		return false;
+	}
+
+	// Allocate a buffer to store contents of the file.
+	std::unique_ptr<char[]> buf(new char[size]);
+
+	// We don't use String here because ArduinoJson library requires the input
+	// buffer to be mutable. If you don't use ArduinoJson, you may as well
+	// use configFile.readString instead.
+	configFile.readBytes(buf.get(), size);
+	StaticJsonBuffer<200> jsonBuffer;
+	JsonObject& json = jsonBuffer.parseObject(buf.get());
+	if (!json.success()) {
+		Serial.println("Failed to parse config file");
+		return false;
+	}
+	String mqtt = json["mqtt"];
+	mqtt.toCharArray(mqttServer, 40);
+	Serial.println(mqttServer);
+	return true;
+}
+
+bool saveConfig() {
+	StaticJsonBuffer<200> jsonBuffer;
+	JsonObject& json = jsonBuffer.createObject();
+	json["mqtt"] = mqttServer;
+
+	File configFile = SPIFFS.open("/config.json", "w");
+	if (!configFile) {
+		Serial.println("Failed to open config file for writing");
+		return false;
+	}
+
+	json.printTo(configFile);
+	return true;
+}
+
 void reconnect() {
-	// Loop until we're reconnected
 	while (!client.connected()) {
 		Serial.print("Attempting MQTT connection...");
-		// Attempt to connect
 		if (client.connect("IoT Client")) {
 			Serial.println("connected");
-			//subscribe
 			client.subscribe(sprinklerTopic);
 		}
 		else {
 			Serial.print("failed, rc=");
 			Serial.print(client.state());
 			Serial.println(" try again in 5 seconds");
-			// Wait 5 seconds before retrying
 			delay(5 * 1000);
 		}
 	}
@@ -100,6 +154,7 @@ void reconnect() {
 
 void setup() {
 	Serial.begin(115200);
+	SPIFFS.begin();
 
 	//Default the primary relay off
 	pinMode(relayPin, OUTPUT);
@@ -107,18 +162,22 @@ void setup() {
 	delay(500);
 
 	WiFiManager wifiManager;
+	wifiManager.setSaveConfigCallback(saveConfigCallback);
 	//wifiManager.resetSettings();
-	//WiFiManagerParameter custom_mqtt_server("server", "mqtt server", mqtt_server, 40);
-	//wifiManager.addParameter(&custom_mqtt_server);
+	WiFiManagerParameter custom_mqtt_server("server", "mqtt server", mqttServer, 40);
+	wifiManager.addParameter(&custom_mqtt_server);
 	wifiManager.autoConnect("SprinklerAp");
 
-	//Get the mqtt from the user input
-	//strcpy(mqtt_server, custom_mqtt_server.getValue());
-
+	//save the custom parameters to FS
+	if (shouldSaveConfig) {
+		strcpy(mqttServer, custom_mqtt_server.getValue());
+		saveConfig();
+	}
+	loadConfig();
 	client.setServer(mqttServer, mqttPort);
-	client.setCallback(callback);
-
+	client.setCallback(callbackMessage);
 	Serial.println("Connected");
+	SPIFFS.end();
 }
 
 void loop() {
