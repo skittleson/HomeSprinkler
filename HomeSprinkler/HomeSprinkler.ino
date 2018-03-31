@@ -2,25 +2,22 @@
  Name:		HomeSprinkler.ino
  Created:	3/25/2018 7:56:44 PM
  Author:	Spencer Kittleson
+
+ Resources:
+ https://github.com/esp8266/Arduino/blob/master/libraries/esp8266/examples/ConfigFile/ConfigFile.ino
 */
 //TODO failover if relay is on too long
 //TODO multiple sprinkler values
 #include <FS.h>
 #include <ESP8266WiFi.h>          //ESP8266 Core WiFi Library (you most likely already have this in your sketch)
-
 #include <DNSServer.h>            //Local DNS Server used for redirecting all requests to the configuration portal
 #include <ESP8266WebServer.h>     //Local WebServer used to serve the configuration portal
 #include <WiFiManager.h>          //https://github.com/tzapu/WiFiManager WiFi Configuration Magic
-
 #include <PubSubClient.h>         //https://github.com/knolleary/pubsubclient/blob/master/examples/mqtt_esp8266/mqtt_esp8266.ino
-
 #include <ArduinoJson.h>
 
-//https://github.com/esp8266/Arduino/blob/master/libraries/esp8266/examples/ConfigFile/ConfigFile.ino
-
-WiFiClient espClient;
-PubSubClient client(espClient);
-
+WiFiClient wifiClient;
+PubSubClient mqttClient(wifiClient);
 char mqttServer[40];
 const int mqttPort = 1883;
 const int relayPin = 2;
@@ -84,7 +81,7 @@ void callbackMessage(char* topic, byte* payload, unsigned int length) {
 	root.printTo(payloadJson);
 
 	Serial.println(payloadJson);
-	client.publish(sprinklerTopicEvent, payloadJson.c_str());
+	mqttClient.publish(sprinklerTopicEvent, payloadJson.c_str());
 }
 
 /**
@@ -121,31 +118,35 @@ bool loadConfig() {
 	return true;
 }
 
+/** 
+* Save an config settings that can be used later or that needs to survive a reboot.
+*/
 bool saveConfig() {
 	StaticJsonBuffer<200> jsonBuffer;
 	JsonObject& json = jsonBuffer.createObject();
 	json["mqtt"] = mqttServer;
-
 	File configFile = SPIFFS.open("/config.json", "w");
 	if (!configFile) {
 		Serial.println("Failed to open config file for writing");
 		return false;
 	}
-
 	json.printTo(configFile);
 	return true;
 }
 
+/**
+* Reconnect mqtt client
+*/
 void reconnect() {
-	while (!client.connected()) {
+	while (!mqttClient.connected()) {
 		Serial.print("Attempting MQTT connection...");
-		if (client.connect("IoT Client")) {
+		if (mqttClient.connect("IoT Client")) {
 			Serial.println("connected");
-			client.subscribe(sprinklerTopic);
+			mqttClient.subscribe(sprinklerTopic);
 		}
 		else {
 			Serial.print("failed, rc=");
-			Serial.print(client.state());
+			Serial.print(mqttClient.state());
 			Serial.println(" try again in 5 seconds");
 			delay(5 * 1000);
 		}
@@ -174,15 +175,15 @@ void setup() {
 		saveConfig();
 	}
 	loadConfig();
-	client.setServer(mqttServer, mqttPort);
-	client.setCallback(callbackMessage);
+	mqttClient.setServer(mqttServer, mqttPort);
+	mqttClient.setCallback(callbackMessage);
 	Serial.println("Connected");
 	SPIFFS.end();
 }
 
 void loop() {
-	if (!client.connected()) {
+	if (!mqttClient.connected()) {
 		reconnect();
 	}
-	client.loop();
+	mqttClient.loop();
 }
