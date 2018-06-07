@@ -40,6 +40,7 @@ void saveConfigCallback() {
 */
 char* byteArrayIntoCharArray(byte* bytes, unsigned int length) {
 	char* data = (char*)bytes;
+	
 	//end string at length. (it's kinda hacky and surprising this even works. array length is correct as well. :) )
 	data[length] = NULL;
 	return data;
@@ -49,9 +50,9 @@ char* byteArrayIntoCharArray(byte* bytes, unsigned int length) {
 * Callback handler for MQTT
 */
 void callbackMessage(char* topic, byte* payload, unsigned int length) {
+	
 	//Only topic defined should be processed
 	if (strcmp(topic, sprinklerTopic) != 0) { return; }
-
 	char* payloadValue = byteArrayIntoCharArray(payload, length);
 
 	//Allocate for json response
@@ -76,10 +77,8 @@ void callbackMessage(char* topic, byte* payload, unsigned int length) {
 	else {
 		root["msg"] = "unknown payload";
 	}
-
 	String payloadJson;
 	root.printTo(payloadJson);
-
 	Serial.println(payloadJson);
 	mqttClient.publish(sprinklerTopicEvent, payloadJson.c_str());
 }
@@ -119,7 +118,7 @@ bool loadConfig() {
 }
 
 /** 
-* Save an config settings that can be used later or that needs to survive a reboot.
+* Save config settings that can be used later or that needs to survive a reboot.
 */
 bool saveConfig() {
 	StaticJsonBuffer<200> jsonBuffer;
@@ -161,7 +160,6 @@ void setup() {
 	pinMode(relayPin, OUTPUT);
 	digitalWrite(relayPin, 1);
 	delay(500);
-
 	WiFiManager wifiManager;
 	wifiManager.setSaveConfigCallback(saveConfigCallback);
 	//wifiManager.resetSettings();
