@@ -6,8 +6,10 @@
  Resources:
  https://github.com/esp8266/Arduino/blob/master/libraries/esp8266/examples/ConfigFile/ConfigFile.ino
 */
-//TODO failover if relay is on too long
-//TODO multiple sprinkler values
+// TODO failover if relay is on too long
+// TODO multiple sprinkler values
+// TODO reset settings
+
 #include <FS.h>
 #include <ESP8266WiFi.h>          //ESP8266 Core WiFi Library (you most likely already have this in your sketch)
 #include <DNSServer.h>            //Local DNS Server used for redirecting all requests to the configuration portal
@@ -27,13 +29,6 @@ const char* relayOff = "false";
 const char* sprinklerTopic = "home/sprinkler";
 const char* sprinklerTopicEvent = "home/sprinkler/event";
 bool shouldSaveConfig = false;
-
-/**
-* callback notifying us of the need to save config
-*/
-void saveConfigCallback() {
-	shouldSaveConfig = true;
-}
 
 /**
 * Convert byte array into char array.
@@ -163,8 +158,8 @@ void setup() {
 	delay(500);
 
 	WiFiManager wifiManager;
-	wifiManager.setSaveConfigCallback(saveConfigCallback);
-	//wifiManager.resetSettings();
+	wifiManager.setSaveConfigCallback([](){ shouldSaveConfig = true; });
+	wifiManager.resetSettings();
 	WiFiManagerParameter custom_mqtt_server("server", "mqtt server", mqttServer, 40);
 	wifiManager.addParameter(&custom_mqtt_server);
 	wifiManager.autoConnect("SprinklerAp");

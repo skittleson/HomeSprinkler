@@ -1,6 +1,10 @@
 # HomeSprinkler
 HomeSprinkler is a message listener for water sprinker based operations using ([mqtt](https://mqtt.org/)). This is not a replacement for water sprinkler scheduling.
 
+## Quick Start
+
+Upload the **HomeSprinkler.ino** to device.  Then navigate to http://10.0.1.1 .  Select a WiFi device, enter password, and add a MQTT server.
+
 ## Messages
 ### home/sprinkler
 payload on `home/sprinkler` : `status`
